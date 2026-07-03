@@ -6,7 +6,8 @@ from aiogram.filters import CommandStart
 from aiohttp import web
 import database
 
-TOKEN = os.getenv("8978194297:AAHp1oqolPRqtCZ48KRndAGFXrd-in30OTw")
+# Заменяем чтение из Render на прямой токен
+TOKEN = "8978194297:AAHp1oqolPRqtCZ48KRndAGFXrd-in30OTw"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
