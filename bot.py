@@ -32,7 +32,6 @@ def get_main_keyboard(user_id: int):
         [KeyboardButton(text="⚔️ Искать Бой"), KeyboardButton(text="👥 Друзья")],
         [KeyboardButton(text="🛡 Кланы")]
     ]
-    # Если это ты, добавляем кнопку админки в самый низ
     if user_id == ADMIN_ID:
         buttons.append([KeyboardButton(text="👑 Админ-Панель")])
         
@@ -40,6 +39,7 @@ def get_main_keyboard(user_id: int):
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message):
+    admin_states[message.from_user.id] = None
     await database.register_user(message.from_user.id, message.from_user.username or f"id_{message.from_user.id}")
     await message.answer(
         f"🤖 Добро пожаловать! Все системы активны.\n\n"
@@ -49,6 +49,7 @@ async def command_start_handler(message: Message):
 
 @dp.message(F.text == "👤 Профиль")
 async def profile_handler(message: Message):
+    admin_states[message.from_user.id] = None
     profile = await database.get_user_profile(message.from_user.id)
     if profile:
         coins, power, clan = profile
@@ -63,6 +64,7 @@ async def profile_handler(message: Message):
 
 @dp.message(F.text == "🎰 Испытать удачу")
 async def drop_card_handler(message: Message):
+    admin_states[message.from_user.id] = None
     card = await database.get_random_card()
     if card:
         card_id, name, fandom, rarity = card
@@ -76,27 +78,30 @@ async def drop_card_handler(message: Message):
             f"💪 Карта добавлена в инвентарь! Сила выросла."
         )
 
+# === ОБНОВЛЕННЫЙ ИСПРАВЛЕННЫЙ ИНВЕНТАРЬ ===
 @dp.message(F.text == "🎒 Мой Инвентарь")
 async def inventory_handler(message: Message):
+    admin_states[message.from_user.id] = None # Сбрасываем режим рассылки, если он был включен
+    
     inv = await database.get_user_inventory(message.from_user.id)
     if not inv:
         return await message.answer("🎒 Твой инвентарь пока пуст. Крути дропы!")
     
-    await message.answer("🎒 Твоя коллекция карт. Нажми на карту ниже, чтобы продать её за монеты:")
+    text = "🎒 {html.bold('Твоя коллекция карт:')}\nНажми на кнопку под картой, чтобы продать её за монеты.\n\n"
+    keyboard = []
     
-    for item in inv:
+    # Чтобы бот не спамил 50-ю сообщениями, выводим красивым списком с инлайн-кнопками под ним
+    for num, item in enumerate(inv, 1):
         inv_id, name, fandom, rarity, price = item
         rarity_emoji = EMOJIS.get(rarity, "🃏")
         sell_price = int(price * 0.7)
         
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"💰 Продать за 🪙 {sell_price}", callback_data=f"sell_{inv_id}")]
-        ])
+        text += f"{num}. {rarity_emoji} {html.bold(name)} ({fandom}) — Продажа: 🪙 {sell_price}\n"
+        # Добавляем инлайн-кнопку для каждой карточки
+        keyboard.append([InlineKeyboardButton(text=f"💰 Продать №{num} ({name})", callback_data=f"sell_{inv_id}")])
         
-        await message.answer(
-            f"{rarity_emoji} {html.bold(name)}\n🎬 Фандом: {fandom}\n⭐ Редкость: {rarity}",
-            reply_markup=kb
-        )
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await message.answer(text, reply_markup=reply_markup)
 
 @dp.callback_query(F.data.startswith("sell_"))
 async def sell_callback(callback: CallbackQuery):
@@ -104,13 +109,29 @@ async def sell_callback(callback: CallbackQuery):
     earned = await database.sell_card_back(callback.from_user.id, inv_id)
     
     if earned:
-        await callback.message.edit_text("✅ Карточка успешно продана на рынке!")
-        await callback.answer(f"Получено 🪙 +{earned} монет!")
+        await callback.answer(f"Получено 🪙 +{earned} монет!", show_alert=True)
+        # Сразу обновляем список инвентаря, чтобы проданная карта исчезла
+        inv = await database.get_user_inventory(callback.from_user.id)
+        if not inv:
+            await callback.message.edit_text("🎒 Твой инвентарь теперь пуст.")
+            return
+            
+        text = "🎒 {html.bold('Твоя коллекция карт:')}\nНажми на кнопку под картой, чтобы продать её за монеты.\n\n"
+        keyboard = []
+        for num, item in enumerate(inv, 1):
+            inv_id, name, fandom, rarity, price = item
+            rarity_emoji = EMOJIS.get(rarity, "🃏")
+            sell_price = int(price * 0.7)
+            text += f"{num}. {rarity_emoji} {html.bold(name)} ({fandom}) — Продажа: 🪙 {sell_price}\n"
+            keyboard.append([InlineKeyboardButton(text=f"💰 Продать №{num} ({name})", callback_data=f"sell_{inv_id}")])
+            
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
     else:
         await callback.answer("❌ Ошибка продажи! Возможно, карта уже продана.")
 
 @dp.message(F.text == "🛒 Магазин")
 async def shop_handler(message: Message):
+    admin_states[message.from_user.id] = None
     items = await database.get_shop_items()
     if not items:
         return await message.answer("Магазин пуст.")
@@ -137,6 +158,7 @@ async def buy_callback(callback: CallbackQuery):
 
 @dp.message(F.text == "⚔️ Искать Бой")
 async def battle_handler(message: Message):
+    admin_states[message.from_user.id] = None
     user_id = message.from_user.id
     user_profile = await database.get_user_profile(user_id)
     enemy = await database.get_enemy(user_id)
@@ -164,6 +186,7 @@ async def battle_handler(message: Message):
 
 @dp.message(F.text == "👥 Друзья")
 async def friends_menu(message: Message):
+    admin_states[message.from_user.id] = None
     friends = await database.get_friends(message.from_user.id)
     text = "👥 **Список твоих друзей:**\n\n"
     if friends:
@@ -190,6 +213,7 @@ async def add_friend_command(message: Message):
 
 @dp.message(F.text == "🛡 Кланы")
 async def clan_menu(message: Message):
+    admin_states[message.from_user.id] = None
     await message.answer(
         "🛡 **Клановое Убежище**\n\n"
         "Создай свой собственный топ-клан командой:\n"
@@ -208,7 +232,7 @@ async def create_clan_command(message: Message):
     else:
         await message.answer("❌ Имя клана уже занято.")
 
-# ==================== АДМИН ПАНЕЛЬ (ТОЛЬКО ДЛЯ ТЕБЯ) ====================
+# ==================== АДМИН ПАНЕЛЬ ====================
 
 @dp.message(F.text == "👑 Админ-Панель")
 async def admin_panel_handler(message: Message):
@@ -245,14 +269,14 @@ async def admin_callbacks(callback: CallbackQuery):
         await callback.message.edit_text("📢 Отправь следующим сообщением текст, который получат ВСЕ игроки бота:")
         await callback.answer()
 
-# Перехват текста рассылки
+# Перехват текста рассылки (срабатывает ТОЛЬКО если статус равен 'waiting_text')
 @dp.message(lambda msg: admin_states.get(msg.from_user.id) == "waiting_text")
 async def process_broadcast_text(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
         
     broadcast_text = message.text
-    admin_states[message.from_user.id] = None # Сброс состояния
+    admin_states[message.from_user.id] = None 
     
     await message.answer("🚀 Начинаю глобальную рассылку...")
     
@@ -265,7 +289,7 @@ async def process_broadcast_text(message: Message):
         try:
             await bot.send_message(chat_id=u[0], text=broadcast_text)
             success += 1
-            await asyncio.sleep(0.05) # Защита от спам-фильтра Telegram
+            await asyncio.sleep(0.05)
         except:
             continue
             
