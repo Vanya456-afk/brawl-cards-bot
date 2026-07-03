@@ -17,27 +17,33 @@ dp = Dispatcher()
 # Состояния для админ-действий
 admin_states = {}
 
+# Обновленные эмодзи редкостей и фэндомов
 EMOJIS = {
     "Common": "🟢", "Rare": "🔵", "Epic": "🟣", "Mythic": "🟡", "Legendary": "🟠",
-    "Brawl Stars": "🌟", "Roblox": "🧱", "Geometry Dash": "🔺"
+    "Brawl Stars": "🌟", "Roblox": "🧱", "Geometry Dash": "🔺",
+    "Standoff 2": "🔫", "Minecraft": "⛏️", "Anime": "🎎"
 }
 
-# Стоимость ящиков по фэндомам
+# Стоимость ящиков для ВСЕХ фэндомов
 BOX_PRICES = {
     "Brawl Stars": 150,
     "Roblox": 100,
-    "Geometry Dash": 80
+    "Geometry Dash": 80,
+    "Standoff 2": 140,
+    "Minecraft": 110,
+    "Anime": 130
 }
 
 def get_main_keyboard(user_id: int):
-    # УДАЛЕНА кнопка Мой Инвентарь по твоему запросу
+    # Добавлена ПРОСТО КНОПКА «💰 Продать карточки» на главный экран
     buttons = [
         [KeyboardButton(text="🎰 Испытать удачу"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="🛒 Магазин"), KeyboardButton(text="⚔️ Искать Бой")],
-        [KeyboardButton(text="👥 Друзья"), KeyboardButton(text="🛡 Кланы")]
+        [KeyboardButton(text="🛒 Магазин"), KeyboardButton(text="💰 Продать карточки")],
+        [KeyboardButton(text="⚔️ Искать Бой"), KeyboardButton(text="👥 Друзья")],
+        [KeyboardButton(text="🛡 Кланы")]
     ]
     if user_id == ADMIN_ID:
-        buttons.append([KeyboardButton(text="👑 Админ-Панель")])
+        buttons.append([KeyboardButton(text="👑 Admin-Панель")])
         
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
@@ -46,8 +52,8 @@ async def command_start_handler(message: Message):
     admin_states[message.from_user.id] = None
     await database.register_user(message.from_user.id, message.from_user.username or f"id_{message.from_user.id}")
     await message.answer(
-        f"🤖 Добро пожаловать в обновленную версию бота!\n\n"
-        f"Покупай кейсы фэндомов, продавай карты прямо в магазине и побеждай!",
+        f"🤖 Бот обновлен!\n\n"
+        f"Теперь продажа карт вынесена на отдельную кнопку главного меню, а в магазин завезли новые фэндомы!",
         reply_markup=get_main_keyboard(message.from_user.id)
     )
 
@@ -63,7 +69,7 @@ async def profile_handler(message: Message):
             f"🪙 Баланс: {coins} монет\n"
             f"💪 Сила аккаунта: {power}\n"
             f"🛡 Твой клан: {clan_text}\n\n"
-            f"🆔 Твой ID для друзей: `{message.from_user.id}`"
+            f"🆔 Твой ID: `{message.from_user.id}`"
         )
 
 @dp.message(F.text == "🎰 Испытать удачу")
@@ -73,9 +79,9 @@ async def drop_card_handler(message: Message):
     if card:
         card_id, name, fandom, rarity = card
         
-        # УДАЛЕНИЕ МЕЛСТРОЯ: Фильтруем на лету, если карта осталась в базе
+        # Защита от Мелстроя
         if "мелстрой" in name.lower() or "mellstroy" in name.lower() or "мем" in name.lower():
-            return await message.answer("🎰 Карточка выпала... Но она оказалась удаленной цензурой! Крути еще раз.")
+            return await message.answer("🎰 Выпала удаленная карта! Крути еще раз.")
             
         await database.add_to_inventory(message.from_user.id, card_id)
         rarity_emoji = EMOJIS.get(rarity, "🃏")
@@ -84,65 +90,83 @@ async def drop_card_handler(message: Message):
             f"🎉 Дроп получен!\n\n"
             f"{fandom_emoji} Фэндом: {html.bold(fandom)}\n"
             f"👤 Карточка: {name}\n"
-            f"{rarity_emoji} Редкость: {rarity}\n\n"
-            f"💪 Карта добавлена в инвентарь!"
+            f"{rarity_emoji} Редкость: {rarity}"
         )
 
-# === ОБНОВЛЕННЫЙ МАГАЗИН: ПОКУПКА, ПРОДАЖА КАРТ И ЯЩИКИ ===
+# === ЧИСТЫЙ МАГАЗИН (ТОЛЬКО ЯЩИКИ) ===
 @dp.message(F.text == "🛒 Магазин")
 async def shop_handler(message: Message):
     admin_states[message.from_user.id] = None
     
-    text = f"🏪 {html.bold('Добро пожаловать в Магазин!')}\n\n"
-    text += f"📦 {html.bold('Ящики фэндомов:')}\n"
+    text = f"🏪 {html.bold('Магазин тематических ящиков:')}\n\n"
     for fandom, b_price in BOX_PRICES.items():
-        text += f"• Ящик {fandom} — 🪙 {b_price} монет\n"
+        fandom_emoji = EMOJIS.get(fandom, "📦")
+        text += f"{fandom_emoji} Ящик {fandom} — 🪙 {b_price} монет\n"
         
-    keyboard = [
-        [InlineKeyboardButton(text="⭐ Ящик Brawl Stars", callback_data="open_box_Brawl Stars")],
-        [InlineKeyboardButton(text="🧱 Ящик Roblox", callback_data="open_box_Roblox")],
-        [InlineKeyboardButton(text="🔺 Ящик Geometry Dash", callback_data="open_box_Geometry Dash")],
-        [InlineKeyboardButton(text="💰 Продать мои карточки", callback_data="shop_sell_menu")]
-    ]
+    # Динамическая генерация инлайн-кнопок для всех фэндомов
+    keyboard = []
+    fandom_list = list(BOX_PRICES.keys())
     
-    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer(text, reply_markup=reply_markup)
+    # Кнопки в два ряда для компактности
+    for i in range(0, len(fandom_list), 2):
+        row = [InlineKeyboardButton(text=f"📦 {fandom_list[i]}", callback_data=f"open_box_{fandom_list[i]}")]
+        if i + 1 < len(fandom_list):
+            row.append(InlineKeyboardButton(text=f"📦 {fandom_list[i+1]}", callback_data=f"open_box_{fandom_list[i+1]}"))
+        keyboard.append(row)
+    
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
-# Меню продажи внутри магазина
-@dp.callback_query(F.data == "shop_sell_menu")
-async def shop_sell_menu_callback(callback: CallbackQuery):
-    inv = await database.get_user_inventory(callback.from_user.id)
+# === ОТДЕЛЬНАЯ ФУНКЦИЯ ПРОДАЖИ КАРТОЧЕК ===
+@dp.message(F.text == "💰 Продать карточки")
+async def sell_menu_handler(message: Message):
+    admin_states[message.from_user.id] = None
+    inv = await database.get_user_inventory(message.from_user.id)
+    
     if not inv:
-        return await callback.answer("🎒 Твой инвентарь пуст, продавать нечего!", show_alert=True)
+        return await message.answer("🎒 В твоем инвентаре пусто, нечего продавать!")
         
-    text = f"💰 {html.bold('Окно продажи твоих карт:')}\nВыбери карту, которую хочешь продать:\n\n"
+    text = f"💰 {html.bold('Окно быстрой продажи карт:')}\nВыбери карту, которую хочешь обменять на монеты:\n\n"
     keyboard = []
     
     for num, item in enumerate(inv, 1):
         inv_id, name, fandom, rarity, price = item
-        # Пропускаем Мелстроя, если он завалялся в инвентаре
         if "мелстрой" in name.lower() or "mellstroy" in name.lower():
             continue
         sell_price = int(price * 0.7)
         rarity_emoji = EMOJIS.get(rarity, "🃏")
         
         text += f"{num}. {rarity_emoji} {name} ({fandom}) — 🪙 {sell_price}\n"
-        keyboard.append([InlineKeyboardButton(text=f"Продать №{num} (+🪙{sell_price})", callback_data=f"ssell_{inv_id}")])
+        keyboard.append([InlineKeyboardButton(text=f"Продать №{num} (+🪙{sell_price})", callback_data=f"msell_{inv_id}")])
         
-    keyboard.append([InlineKeyboardButton(text="🔙 Назад в магазин", callback_data="back_to_shop")])
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
-@dp.callback_query(F.data.startswith("ssell_"))
-async def shop_sell_execute(callback: CallbackQuery):
+@dp.callback_query(F.data.startswith("msell_"))
+async def main_sell_execute(callback: CallbackQuery):
     inv_id = int(callback.data.split("_")[1])
     earned = await database.sell_card_back(callback.from_user.id, inv_id)
     if earned:
-        await callback.answer(f"✅ Продано! Получено 🪙 +{earned} монет!", show_alert=True)
-        await shop_sell_menu_callback(callback) # Перерисовываем меню
+        await callback.answer(f"✅ Получено 🪙 +{earned} монет!", show_alert=True)
+        
+        # Сразу обновляем список в текущем сообщении
+        inv = await database.get_user_inventory(callback.from_user.id)
+        if not inv:
+            return await callback.message.edit_text("🎒 Больше карт для продажи нет!")
+            
+        text = f"💰 {html.bold('Окно быстрой продажи карт:')}\nВыбери карту, которую хочешь обменять на монеты:\n\n"
+        keyboard = []
+        for num, item in enumerate(inv, 1):
+            inv_id, name, fandom, rarity, price = item
+            if "мелстрой" in name.lower() or "mellstroy" in name.lower(): continue
+            sell_price = int(price * 0.7)
+            rarity_emoji = EMOJIS.get(rarity, "🃏")
+            text += f"{num}. {rarity_emoji} {name} ({fandom}) — 🪙 {sell_price}\n"
+            keyboard.append([InlineKeyboardButton(text=f"Продать №{num} (+🪙{sell_price})", callback_data=f"msell_{inv_id}")])
+            
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
     else:
-        await callback.answer("❌ Ошибка продажи.")
+        await callback.answer("❌ Карта уже продана или не найдена.")
 
-# Покупка тематических ящиков
+# Покупка кейсов
 @dp.callback_query(F.data.startswith("open_box_"))
 async def open_box_callback(callback: CallbackQuery):
     fandom = callback.data.replace("open_box_", "")
@@ -150,12 +174,10 @@ async def open_box_callback(callback: CallbackQuery):
     
     profile = await database.get_user_profile(callback.from_user.id)
     if not profile or profile[0] < price:
-        return await callback.answer("❌ Недостаточно монет для покупки этого ящика!", show_alert=True)
+        return await callback.answer("❌ Недостаточно монет!", show_alert=True)
         
-    # Снимаем монеты
     await database.update_coins(callback.from_user.id, -price)
     
-    # Ищем карты конкретного фэндома (без Мелстроя)
     async with aiosqlite.connect(database.DB_NAME) as db:
         async with db.execute(
             "SELECT id, name, fandom, rarity FROM cards WHERE fandom = ? AND name NOT LIKE '%Мелстрой%' AND name NOT LIKE '%Mellstroy%'", 
@@ -164,27 +186,21 @@ async def open_box_callback(callback: CallbackQuery):
             cards = await cursor.fetchall()
             
     if not cards:
-        await database.update_coins(callback.from_user.id, price) # Возврат
-        return await callback.answer("🤖 В этом ящике временно кончились карты!", show_alert=True)
+        await database.update_coins(callback.from_user.id, price)
+        return await callback.answer(f"🤖 В ящике {fandom} временно нет карт в базе!", show_alert=True)
         
     card_id, name, fandom, rarity = random.choice(cards)
     await database.add_to_inventory(callback.from_user.id, card_id)
     
     rarity_emoji = EMOJIS.get(rarity, "🃏")
     await callback.message.answer(
-        f"📦 Вы открыли **Ящик {fandom}** за 🪙 {price} монет!\n\n"
+        f"📦 Открыт ящик **{fandom}** за 🪙 {price} монет!\n\n"
         f"👤 Выпала карта: {html.bold(name)}\n"
         f"{rarity_emoji} Редкость: {rarity}"
     )
-    await callback.answer("Успешное открытие!")
+    await callback.answer()
 
-@dp.callback_query(F.data == "back_to_shop")
-async def back_to_shop_callback(callback: CallbackQuery):
-    await callback.message.delete()
-    # Имитируем нажатие на Магазин
-    await shop_handler(callback.message)
-
-# === ОСТАЛЬНЫЕ ИГРОВЫЕ ФУНКЦИИ ===
+# === ДУЭЛИ, ДРУЗЬЯ И КЛАНЫ ===
 @dp.message(F.text == "⚔️ Искать Бой")
 async def battle_handler(message: Message):
     admin_states[message.from_user.id] = None
@@ -207,7 +223,7 @@ async def battle_handler(message: Message):
     if user_roll >= enemy_roll:
         reward = random.randint(50, 120)
         await database.update_coins(user_id, reward)
-        await message.answer(f"🏆 Ты выиграл! Награда: 🪙 +{reward} монет!")
+        await message.answer(f"🏆 Победа! Награда: 🪙 +{reward} монет!")
     else:
         loss = random.randint(15, 40)
         await database.update_coins(user_id, -loss)
@@ -217,14 +233,11 @@ async def battle_handler(message: Message):
 async def friends_menu(message: Message):
     admin_states[message.from_user.id] = None
     friends = await database.get_friends(message.from_user.id)
-    text = "👥 **Список твоих друзей:**\n\n"
+    text = "👥 **Твои друзья:**\n\n"
     if friends:
-        for f_id, f_name in friends:
-            text += f"• @{f_name} (ID: {f_id})\n"
-    else:
-        text += "У тебя пока нет друзей.\n"
-    text += "\nЧтобы добавить друга, введи команду:\n`/add_friend ID`"
-    await message.answer(text, parse_mode="Markdown")
+        for f_id, f_name in friends: text += f"• @{f_name} (ID: {f_id})\n"
+    else: text += "Список пуст.\n"
+    await message.answer(text + "\nДобавить друга: `/add_friend ID`")
 
 @dp.message(F.text.startswith("/add_friend"))
 async def add_friend_command(message: Message):
@@ -233,100 +246,82 @@ async def add_friend_command(message: Message):
         success = await database.add_friend(message.from_user.id, friend_id)
         if success: await message.answer("✅ Добавлен!")
         else: await message.answer("❌ Ошибка.")
-    except:
-        await message.answer("Пример: `/add_friend 12345678`")
+    except: await message.answer("Пример: `/add_friend ID`")
 
 @dp.message(F.text == "🛡 Кланы")
 async def clan_menu(message: Message):
     admin_states[message.from_user.id] = None
-    await message.answer("🛡 **Клановое Убежище**\n\nСоздай клан:\n`/create_clan НАЗВАНИЕ`")
+    await message.answer("🛡 **Кланы**\n\nСоздать клан:\n`/create_clan НАЗВАНИЕ`")
 
 @dp.message(F.text.startswith("/create_clan"))
 async def create_clan_command(message: Message):
     parts = message.text.split(" ", 1)
     if len(parts) < 2: return await message.answer("Пример: `/create_clan BRAWL`")
     success = await database.create_clan(parts[1], message.from_user.id)
-    if success: await message.answer(f"🎉 Клан '{parts[1]}' успешно создан!")
-    else: await message.answer("❌ Ошибка создания.")
+    if success: await message.answer(f"🎉 Клан '{parts[1]}' создан!")
+    else: await message.answer("❌ Имя занято.")
 
-
-# ==================== МОЩНАЯ АДМИН ПАНЕЛЬ (10 КОМАНД) ====================
-
-@dp.message(F.text == "👑 Админ-Панель")
+# ==================== АДМИНКА (10 КОМАНД) ====================
+@dp.message(F.text == "👑 Admin-Панель")
 async def admin_panel_handler(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        return await message.answer("🔒 Отказано в доступе.")
-        
+    if message.from_user.id != ADMIN_ID: return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 1. Статистика", callback_data="a_1"), InlineKeyboardButton(text="📢 2. Рассылка", callback_data="a_2")],
         [InlineKeyboardButton(text="🪙 3. Выдать монет", callback_data="a_3"), InlineKeyboardButton(text="⛔ 4. Забрать монет", callback_data="a_4")],
         [InlineKeyboardButton(text="🃏 5. Добавить Карту", callback_data="a_5"), InlineKeyboardButton(text="🗑️ 6. Удалить Мемы", callback_data="a_6")],
         [InlineKeyboardButton(text="🧙‍♂️ 7. Дать Силу", callback_data="a_7"), InlineKeyboardButton(text="❌ 8. Обнулить Топа", callback_data="a_8")],
-        [InlineKeyboardButton(text="🛡️ 9. Список Кланов", callback_data="a_9"), InlineKeyboardButton(text="💥 10. Очистить Инвентарь", callback_data="a_10")]
+        [InlineKeyboardButton(text="🛡️ 9. Список Кланов", callback_data="a_9"), InlineKeyboardButton(text="💥 10. Очистить Инв.", callback_data="a_10")]
     ])
-    await message.answer("👑 **Панель Создателя (10 встроенных команд):**", reply_markup=kb)
+    await message.answer("👑 **Панель Создателя:**", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("a_"))
 async def admin_actions(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
     cmd = callback.data.split("_")[1]
     
-    if cmd == "1":  # 1. СТАТИСТИКА
+    if cmd == "1":
         async with aiosqlite.connect(database.DB_NAME) as db:
             users = (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())[0]
             cards = (await (await db.execute("SELECT COUNT(*) FROM inventory")).fetchone())[0]
-        await callback.message.answer(f"📊 Игроков: {users}\n🃏 Всего карт на руках: {cards}")
-        
-    elif cmd == "2":  # 2. РАССЫЛКА
+        await callback.message.answer(f"📊 Игроков: {users}\n🃏 Карт на руках: {cards}")
+    elif cmd == "2":
         admin_states[callback.from_user.id] = "w_broadcast"
         await callback.message.answer("📢 Введи текст рассылки:")
-        
-    elif cmd == "3":  # 3. ВЫДАТЬ МОНЕТЫ
+    elif cmd == "3":
         admin_states[callback.from_user.id] = "w_give_coins"
-        await callback.message.answer("🪙 Введи в формате: `ID КОЛИЧЕСТВО` (например, `7844240869 5000`)")
-        
-    elif cmd == "4":  # 4. ЗАБРАТЬ МОНЕТЫ
+        await callback.message.answer("🪙 Формат: `ID КОЛИЧЕСТВО`")
+    elif cmd == "4":
         admin_states[callback.from_user.id] = "w_take_coins"
-        await callback.message.answer("⛔ Введи в формате: `ID КОЛИЧЕСТВО` (например, `123456 500`)")
-        
-    elif cmd == "5":  # 5. ДОБАВИТЬ НОВУЮ КАРТУ В БАЗУ
+        await callback.message.answer("⛔ Формат: `ID КОЛИЧЕСТВО`")
+    elif cmd == "5":
         admin_states[callback.from_user.id] = "w_add_card"
-        await callback.message.answer("🃏 Введи: `Имя | Фэндом | Редкость | Цена` (Редкости: Common, Rare, Epic, Mythic, Legendary)")
-        
-    elif cmd == "6":  # 6. БЫСТРОЕ УДАЛЕНИЕ МЕЛСТРОЯ
+        await callback.message.answer("🃏 Формат: `Имя | Фэндом | Редкость | Цена` (Фэндомы пиши точь-в-точь: Standoff 2, Minecraft, Anime, Brawl Stars, Roblox, Geometry Dash)")
+    elif cmd == "6":
         async with aiosqlite.connect(database.DB_NAME) as db:
             await db.execute("DELETE FROM cards WHERE name LIKE '%Мелстрой%' OR name LIKE '%Mellstroy%'")
-            await db.execute("DELETE FROM inventory WHERE card_id NOT IN (SELECT id FROM cards)")
             await db.commit()
-        await callback.message.answer("🗑️ Мелстрой и все связанные с ним мемы успешно и навсегда стерты из базы данных!")
-        
-    elif cmd == "7":  # 7. ВЫДАТЬ СИЛУ АККАУНТУ
+        await callback.message.answer("🗑️ Мелстрой удален!")
+    elif cmd == "7":
         admin_states[callback.from_user.id] = "w_give_power"
-        await callback.message.answer("💪 Введи: `ID СИЛА` (например, `7844240869 1000`)")
-        
-    elif cmd == "8":  # 8. ОБНУЛИТЬ ИГРОКА
+        await callback.message.answer("💪 Формат: `ID СИЛА`")
+    elif cmd == "8":
         admin_states[callback.from_user.id] = "w_reset_user"
-        await callback.message.answer("❌ Введи Telegram ID игрока, чтобы полностью сбросить его прогресс:")
-        
-    elif cmd == "9":  # 9. ПОСМОТРЕТЬ ВСЕ КЛАНЫ
+        await callback.message.answer("❌ Введи ID игрока для полного сброса:")
+    elif cmd == "9":
         async with aiosqlite.connect(database.DB_NAME) as db:
-            async with db.execute("SELECT name FROM clans") as c:
-                clans = await c.fetchall()
-        txt = "🛡️ **Список существующих кланов:**\n\n"
+            clans = await (await db.execute("SELECT name FROM clans")).fetchall()
+        txt = "🛡️ **Список кланов:**\n\n"
         for cl in clans: txt += f"• {cl[0]}\n"
-        await callback.message.answer(txt if clans else "Кланов еще нет.")
-        
-    elif cmd == "10":  # 10. ОЧИСТИТЬ ЧЕЙ-ТО ИНВЕНТАРЬ
+        await callback.message.answer(txt if clans else "Кланов нет.")
+    elif cmd == "10":
         admin_states[callback.from_user.id] = "w_clear_inv"
-        await callback.message.answer("💥 Введи Telegram ID, чей инвентарь полностью очистить:")
-        
+        await callback.message.answer("💥 Введи ID игрока для очистки инвентаря:")
     await callback.answer()
 
-# Приемщик ответов админа
 @dp.message(lambda msg: msg.from_user.id == ADMIN_ID and admin_states.get(msg.from_user.id) is not None)
 async def process_admin_inputs(message: Message):
     state = admin_states[message.from_user.id]
-    admin_states[message.from_user.id] = None # Сброс состояния
+    admin_states[message.from_user.id] = None
     
     try:
         if state == "w_broadcast":
@@ -335,31 +330,31 @@ async def process_admin_inputs(message: Message):
             for u in users:
                 try: await bot.send_message(u[0], message.text)
                 except: continue
-            await message.answer("✅ Рассылка завершена успешно!")
+            await message.answer("✅ Рассылка завершена!")
             
         elif state == "w_give_coins":
             uid, amt = map(int, message.text.split())
             await database.update_coins(uid, amt)
-            await message.answer(f"✅ Баланс игрока {uid} увеличен на 🪙 {amt}!")
+            await message.answer(f"✅ Выдано 🪙 {amt} игроку {uid}!")
             
         elif state == "w_take_coins":
             uid, amt = map(int, message.text.split())
             await database.update_coins(uid, -amt)
-            await message.answer(f"✅ У игрока {uid} изъято 🪙 {amt} монет!")
+            await message.answer(f"✅ Забрано 🪙 {amt} у {uid}!")
             
         elif state == "w_add_card":
             name, fandom, rarity, price = map(str.strip, message.text.split("|"))
             async with aiosqlite.connect(database.DB_NAME) as db:
                 await db.execute("INSERT INTO cards (name, fandom, rarity, base_price) VALUES (?,?,?,?)", (name, fandom, rarity, int(price)))
                 await db.commit()
-            await message.answer(f"✅ Карта '{name}' [{fandom}] добавлена в игру!")
+            await message.answer(f"✅ Карта '{name}' [{fandom}] успешно добавлена в игру!")
             
         elif state == "w_give_power":
             uid, pwr = map(int, message.text.split())
             async with aiosqlite.connect(database.DB_NAME) as db:
                 await db.execute("UPDATE users SET power = power + ? WHERE tg_id = ?", (pwr, uid))
                 await db.commit()
-            await message.answer(f"✅ Сила игрока {uid} увеличена на 💪 {pwr}!")
+            await message.answer(f"✅ Сила игрока {uid} изменена на +💪 {pwr}!")
             
         elif state == "w_reset_user":
             uid = int(message.text)
@@ -367,16 +362,16 @@ async def process_admin_inputs(message: Message):
                 await db.execute("UPDATE users SET coins = 100, power = 0, clan = NULL WHERE tg_id = ?", (uid,))
                 await db.execute("DELETE FROM inventory WHERE user_id = ?", (uid,))
                 await db.commit()
-            await message.answer(f"💥 Прогресс игрока {uid} полностью сброшен до нуля!")
+            await message.answer(f"💥 Игрок {uid} полностью сброшен!")
             
         elif state == "w_clear_inv":
             uid = int(message.text)
             async with aiosqlite.connect(database.DB_NAME) as db:
                 await db.execute("DELETE FROM inventory WHERE user_id = ?", (uid,))
                 await db.commit()
-            await message.answer(f"💥 Инвентарь игрока {uid} полностью очищен!")
+            await message.answer(f"💥 Инвентарь игрока {uid} очищен!")
     except Exception as e:
-        await message.answer(f"❌ Ошибка ввода параметров: {e}. Попробуй еще раз через админ-панель.")
+        await message.answer(f"❌ Ошибка ввода: {e}")
 
 # =========================================================================
 
