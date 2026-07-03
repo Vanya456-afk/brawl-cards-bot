@@ -3,9 +3,10 @@ import asyncio
 from aiogram import Bot, Dispatcher, html, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
+from aiohttp import web
 import database
 
-TOKEN = os.getenv("8978194297:AAHp1oqolPRqtCZ48KRndAGFXrd-in30OTw")
+TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -54,10 +55,28 @@ async def drop_card_handler(message: Message):
     else:
         await message.answer("Произошла ошибка, карточки не найдены в базе.")
 
+# Хэндлер для Render, чтобы он видел, что бот работает
+async def handle_ping(request):
+    return web.Response(text="Бот работает!")
+
 async def main():
     await database.init_db()
     print("Бот успешно запущен!")
-    await dp.start_polling(bot)
+    
+    # Запускаем фоновую задачу для опроса Телеграма
+    asyncio.create_task(dp.start_polling(bot))
+    
+    # Запускаем мини веб-сервер для Render на порту 80
+    app = web.Application()
+    app.router.add_get('/', handle_ping)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 80)
+    await site.start()
+    
+    # Держим сервер запущенным бесконечно
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
